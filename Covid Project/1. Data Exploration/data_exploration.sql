@@ -1,169 +1,206 @@
-USE covid_project
+------------------------------------
+-- Data Exploration in SQL Server --
+------------------------------------
+
+/*
+Author:     Arturo Contreras Montoya
+Dataset:    https://ourworldindata.org/covid-deaths
+*/
+
+
+-- =================================================
+
+
+-- Inicial exploration of the database COVID_PROJECT
+USE COVID_PROJECT
 GO
 
-SELECT location, date, total_cases, new_cases, total_deaths, population
-FROM covid_deaths
-ORDER BY 1, 2
+SELECT *
+FROM COVID_DEATHS
+GO
 
 SELECT *
-FROM covid_deaths
-WHERE continent IS NULL
+FROM COVID_VACCINATIONS
+GO
+
+SELECT LOCATION
+  , DATE
+  , TOTAL_CASES
+  , NEW_CASES
+  , TOTAL_DEATHS
+  , POPULATION
+FROM COVID_DEATHS
+ORDER BY 1, 2
+GO
+
+SELECT *
+FROM COVID_DEATHS
+WHERE CONTINENT IS NULL
 ORDER BY 3, 4
 GO
 
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
+
+-- =================================================
 
 
--- total cases vs total deaths
--- show the likelyhood of dying if you contract covid in your country
-SELECT location, date, total_cases, total_deaths,
-	(total_deaths / total_cases) * 100 AS death_porcentage
-FROM covid_deaths
-WHERE location LIKE 'United States'
-	AND continent IS NOT NULL
+-- Total cases vs total deaths
+-- Show the probability of dying if you contract COVID-19 in your country
+SELECT LOCATION
+  , DATE
+  , TOTAL_CASES
+  , TOTAL_DEATHS
+  , (TOTAL_DEATHS / TOTAL_CASES) * 100 AS DEATH_PORCENTAGE
+FROM COVID_DEATHS
+WHERE LOCATION LIKE 'United States'
+    AND CONTINENT IS NOT NULL
 ORDER BY 1, 2
+GO
 
-
--- total cases vs population
--- shows what % of the population got covid
-SELECT location, date, total_cases, population,
-	(total_cases / population) * 100 AS infection_porcentage
-FROM covid_deaths
-WHERE location LIKE 'Peru'
+-- Total cases vs population
+-- Shows what % of the population got COVID-19
+SELECT LOCATION
+  , DATE
+  , TOTAL_CASES
+  , POPULATION
+  , (TOTAL_CASES / POPULATION) * 100 AS INFECTION_PORCENTAGE
+FROM COVID_DEATHS
+WHERE LOCATION LIKE 'Peru'
 ORDER BY 2
+GO
 
+-- Countries with the highest infection rate per population
+SELECT LOCATION
+  , POPULATION
+  , MAX(TOTAL_CASES)                      AS HIGHEST_INFECTION_COUNT
+  , MAX((TOTAL_CASES / POPULATION)) * 100 AS PERCENT_POPULATION_INFECTED
+FROM COVID_DEATHS
+GROUP BY LOCATION
+  , POPULATION
+ORDER BY PERCENT_POPULATION_INFECTED DESC
+GO
 
--- looking at the country with the highest infection rate compared to population
-SELECT location, population,
-	MAX(total_cases) AS highest_infection_count,
-	MAX((total_cases / population)) * 100 AS percent_population_infected
-FROM covid_deaths
-GROUP BY location, population
-ORDER BY percent_population_infected DESC
-
-
--- countries with the highest deathcount per population
-SELECT location,
-	MAX(CAST(total_deaths AS int)) AS total_death
-FROM covid_deaths
-WHERE continent IS NOT NULL
-GROUP BY location
-ORDER BY total_death DESC
-
-
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
-
-
--- breaking things down by continent
--- showing the continents with the highest death count per population
-SELECT continent,
-	MAX(CAST(total_deaths AS int)) AS total_death
-FROM covid_deaths
-WHERE continent IS NOT NULL
-GROUP BY continent
-ORDER BY total_death DESC
-
-
--- global number
-SELECT
-	SUM(new_cases) AS total_cases,
-	SUM(CAST(new_deaths AS int)) AS new_deaths,
-	SUM(CAST(new_deaths AS int))  / SUM(new_cases) * 100 AS death_percentage
-FROM covid_deaths
-WHERE continent IS NOT NULL
--- GROUP BY date
-ORDER BY 1, 2
-
-
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
-
-
--- total population vs total vaccs
-WITH population_vs_vaccs (continent, location, date, population, new_vaccinations, total_vaccs)
-AS (
-	SELECT dt.continent,
-		dt.location,
-		dt.date,
-		dt.population,
-		vc.new_vaccinations,
-		SUM(CONVERT(BIGINT, vc.new_vaccinations)) OVER (
-			PARTITION BY dt.location
-			ORDER BY dt.location,
-				dt.date
-		) AS total_vaccs
-	FROM covid_deaths dt
-	JOIN covid_vaccinations vc
-		ON dt.location = vc.location
-		AND dt.date = vc.date
-	WHERE dt.continent IS NOT NULL
-)
-
-SELECT *,
-	(total_vaccs / population) * 100 AS vacc_percent
-FROM population_vs_vaccs
+-- Countries with the highest deathcount per population
+SELECT LOCATION
+  , MAX(CAST(TOTAL_DEATHS AS INT)) AS TOTAL_DEATH
+FROM COVID_DEATHS
+WHERE CONTINENT IS NOT NULL
+GROUP BY LOCATION
+ORDER BY TOTAL_DEATH DESC
 GO
 
 
----------------------------------------------------------------------------------------------
----------------------------------------------------------------------------------------------
+-- =================================================
 
 
--- inserting the population_vs_vaccs in a table
--- creating the table percent_pop_vaccs
-CREATE TABLE percent_pop_vaccs
-(
-	CONTINENT NVARCHAR(255),
-	LOCATION NVARCHAR(255),
-	DATE DATETIME,
-	POPULATION NUMERIC,
-	NEW_VACCINATIONS NUMERIC,
-	TOTAL_VACCS NUMERIC
-)
+-- Breaking things down by continent
+-- Showing the continents with the highest deathcount per population
+SELECT CONTINENT
+  , MAX(CAST(TOTAL_DEATHS AS INT)) AS TOTAL_DEATH
+FROM COVID_DEATHS
+WHERE CONTINENT IS NOT NULL
+GROUP BY CONTINENT
+ORDER BY TOTAL_DEATH DESC
+GO
 
---  inserting the values into the table
-INSERT INTO percent_pop_vaccs
-	SELECT dt.continent,
-		dt.location,
-		dt.date,
-		dt.population,
-		vc.new_vaccinations,
-		SUM(CONVERT(BIGINT, vc.new_vaccinations)) OVER (
-			PARTITION BY dt.location
-			ORDER BY dt.location,
-				dt.date
-		) AS total_vaccs
-	FROM covid_deaths dt
-	JOIN covid_vaccinations vc
-		ON dt.location = vc.location
-		AND dt.date = vc.date
-	WHERE dt.continent IS NOT NULL
+-- Global numbers (untill febrary 4th, 2023)
+SELECT SUM(NEW_CASES)                                   AS TOTAL_CASES
+  , SUM(CAST(NEW_DEATHS AS INT))                        AS NEW_DEATHS
+  , SUM(CAST(NEW_DEATHS AS INT)) / SUM(NEW_CASES) * 100 AS DEATH_PERCENTAGE
+FROM COVID_DEATHS
+WHERE CONTINENT IS NOT NULL
+GO
 
--- validating information
-SELECT * FROM
-percent_pop_vaccs
 
--- creating a view from that information
-CREATE VIEW v_percent_pop_vaccs AS (
-SELECT dt.continent,
-		dt.location,
-		dt.date,
-		dt.population,
-		vc.new_vaccinations,
-		SUM(CONVERT(BIGINT, vc.new_vaccinations)) OVER (
-			PARTITION BY dt.location
-			ORDER BY dt.location,
-				dt.date
-		) AS total_vaccs
-	FROM covid_deaths dt
-	JOIN covid_vaccinations vc
-		ON dt.location = vc.location
-		AND dt.date = vc.date
-	WHERE dt.continent IS NOT NULL
-)
+-- =================================================
 
--- this view will be used for a viz
+
+-- Total population vs total vaccs
+WITH
+    POPULATION_VS_VACCS (CONTINENT, LOCATION, DATE, POPULATION, NEW_VACCINATIONS, TOTAL_VACCS) AS (
+        SELECT DT.CONTINENT
+          , DT.LOCATION
+          , DT.DATE
+          , DT.POPULATION
+          , VC.NEW_VACCINATIONS
+          , SUM(CONVERT(BIGINT, VC.NEW_VACCINATIONS)) OVER (
+                PARTITION BY DT.LOCATION
+                ORDER BY DT.LOCATION
+                  , DT.DATE
+            ) AS TOTAL_VACCS
+        FROM COVID_DEATHS DT
+            JOIN COVID_VACCINATIONS VC
+                ON DT.LOCATION = VC.LOCATION
+                AND DT.DATE = VC.DATE
+        WHERE DT.CONTINENT IS NOT NULL
+    )
+
 SELECT *
-FROM dbo.v_percent_pop_vaccs
+  , (TOTAL_VACCS / POPULATION) * 100 AS VACC_PERCENT
+FROM POPULATION_VS_VACCS
+GO
+
+
+-- =================================================
+
+
+-- Inserting the POPULATION_VS_VACCS in a table
+-- Creating the table percent_pop_vaccs
+CREATE TABLE PERCENT_POP_VACCS (
+    CONTINENT NVARCHAR (255)
+  , LOCATION NVARCHAR (255)
+  , DATE DATETIME
+  , POPULATION NUMERIC
+  , NEW_VACCINATIONS NUMERIC
+  , TOTAL_VACCS NUMERIC
+)
+GO
+
+-- Inserting POPULATION_VS_VACCS rows into the table
+INSERT INTO
+    PERCENT_POP_VACCS
+SELECT DT.CONTINENT
+  , DT.LOCATION
+  , DT.DATE
+  , DT.POPULATION
+  , VC.NEW_VACCINATIONS
+  , SUM(CONVERT(BIGINT, VC.NEW_VACCINATIONS)) OVER (
+        PARTITION BY DT.LOCATION
+        ORDER BY DT.LOCATION
+          , DT.DATE
+    ) AS TOTAL_VACCS
+FROM COVID_DEATHS DT
+    JOIN COVID_VACCINATIONS VC
+        ON DT.LOCATION = VC.LOCATION
+        AND DT.DATE = VC.DATE
+WHERE DT.CONTINENT IS NOT NULL
+GO
+
+-- Validating the insertion
+SELECT *
+FROM PERCENT_POP_VACCS
+GO
+
+-- Creating a view from POPULATION_VS_VACCS
+-- This view will be used latter for a Power BI visualization
+CREATE VIEW
+    V_PERCENT_POP_VACCS AS (
+        SELECT DT.CONTINENT
+        , DT.LOCATION
+        , DT.DATE
+        , DT.POPULATION
+        , VC.NEW_VACCINATIONS
+        , SUM(CONVERT(BIGINT, VC.NEW_VACCINATIONS)) OVER (
+                PARTITION BY DT.LOCATION
+                ORDER BY DT.LOCATION
+                , DT.DATE
+            ) AS TOTAL_VACCS
+        FROM COVID_DEATHS DT
+            JOIN COVID_VACCINATIONS VC
+                ON DT.LOCATION = VC.LOCATION
+                AND DT.DATE = VC.DATE
+        WHERE DT.CONTINENT IS NOT NULL
+    )
+
+SELECT *
+FROM V_PERCENT_POP_VACCS
+GO
